@@ -1,14 +1,14 @@
-# <your project's name>
+# BuildBrightness
 
 <!-- This README is the front door of your project: the gallery shows its first lines. -->
 
 ## what it is
 
-<one or two sentences: what is your evil input?>
+Brightness rings. You hit the center, and as it expands, the brightness goes up.
 
 ## what input it collects
 
-<text? a volume? a phone number? brightness? a time? and how does it make that miserable?>
+Brightness. Instead of a simple slider, you have to set it by hitting the center of the rings while they expand. The more it expands, the brighter it gets.
 
 ## screenshot
 
