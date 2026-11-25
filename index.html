@@ -3,44 +3,149 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>my evil input</title>
+<title>BuildBrightness</title>
 <style>
-  /* Everything you make goes inside #stage: exactly 800 × 400 pixels. The gallery shows
-     this box (shrunk to fit), so anything outside it won't be seen. */
-  html, body { margin: 0; background: #292b47; color: #eceae3; font: 16px/1.5 ui-monospace, Menlo, Consolas, monospace; }
-  #stage {
-    width: 800px; height: 400px; overflow: hidden; position: relative;
-    display: grid; place-items: center; text-align: center;
-    background: #23243d;
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0a0c12; }
+  canvas { display: block; cursor: crosshair; touch-action: none; }
+  #msg {
+    position: fixed; left: 0; right: 0; bottom: 28px;
+    text-align: center; padding: 0 20px;
+    font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+    letter-spacing: 0.02em; pointer-events: none; user-select: none;
   }
-
-  /* ---- the example below: delete it and build your own ---- */
-  .vol { font-size: 64px; margin: 0; }
-  button { font: inherit; color: inherit; background: #3f4168; border: 0; border-radius: 6px; padding: .6rem 1.2rem; cursor: pointer; }
-  .hint { color: #8d8aa6; font-size: 14px; }
 </style>
 </head>
 <body>
-<div id="stage">
-  <!-- example evil input: volume you have to pump up by hand, and it leaks back down -->
-  <div>
-    <p class="vol"><span id="vol">0</span>%</p>
-    <button id="pump">pump volume</button>
-    <p class="hint">it leaks. keep pumping.</p>
-  </div>
-</div>
+<canvas id="c"></canvas>
+<div id="msg">press and hold the center. keep on it. let go when it's bright enough.</div>
+
 <script>
-  // the example: delete this too
-  let volume = 0;
-  const out = document.getElementById('vol');
-  document.getElementById('pump').addEventListener('click', () => {
-    volume = Math.min(100, volume + 7);
-    out.textContent = Math.round(volume);
-  });
-  setInterval(() => {
-    volume = Math.max(0, volume - 1);
-    out.textContent = Math.round(volume);
-  }, 120);
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const msg = document.getElementById('msg');
+
+let W, H, dpr;
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  W = innerWidth; H = innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener('resize', resize);
+resize();
+
+let phase = 0;        // drives the center's wandering
+let level = 0;        // 0..1, the ring you're growing right now
+let setLevel = 0;     // 0..1, the brightness you last managed to lock in
+let holding = false;
+let px = -1e4, py = -1e4;
+let last = performance.now();
+
+// the center never sits still
+function center() {
+  return {
+    x: W / 2 + W * 0.28 * Math.sin(phase * 0.9) + 14 * Math.sin(phase * 3.1),
+    y: H / 2 + H * 0.26 * Math.sin(phase * 1.3 + 1) + 14 * Math.cos(phase * 2.7)
+  };
+}
+
+// the target shrinks as the brightness climbs
+function hitR() {
+  return Math.max(16, Math.min(W, H) * 0.035) * (1 - 0.55 * level);
+}
+
+function say(text) { msg.textContent = text; }
+
+function finish() {
+  holding = false;
+  setLevel = level;
+  const pct = Math.round(setLevel * 100);
+  window.brightness = pct;
+  say('brightness: ' + pct + '%');
+}
+
+function fail() {
+  holding = false;
+  level = 0;
+  setLevel = 0;
+  window.brightness = 0;
+  say('you slipped. brightness is back to 0%.');
+}
+
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+
+  // the higher the brightness, the faster the center runs
+  phase += dt * (0.5 + 1.6 * level);
+  const c = center();
+
+  if (holding) {
+    if (Math.hypot(px - c.x, py - c.y) <= hitR()) {
+      // the ring grows more slowly the bigger it gets
+      level = Math.min(1, level + dt * 0.25 * (1.05 - 0.75 * level));
+      if (level >= 1) finish();
+    } else {
+      fail();
+    }
+  } else {
+    level = Math.max(0, level - dt * 1.5); // ring collapses after release
+  }
+
+  draw(c);
+  requestAnimationFrame(frame);
+}
+
+function draw(c) {
+  const b = holding ? level : Math.max(setLevel, level);
+  const L = 4 + 92 * b;
+  ctx.fillStyle = 'hsl(220 18% ' + L + '%)';
+  ctx.fillRect(0, 0, W, H);
+
+  const ink = L > 55 ? '10,12,20' : '245,248,255';
+  msg.style.color = 'rgba(' + ink + ',0.75)';
+  const R = Math.min(W, H) * 0.38;
+
+  // faint guide rings, deliberately unlabeled
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(' + ink + ',0.12)';
+  for (const f of [0.25, 0.5, 0.75, 1]) {
+    ctx.beginPath(); ctx.arc(c.x, c.y, R * f, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  // the ring you're growing
+  if (level > 0.002) {
+    ctx.strokeStyle = 'rgba(' + ink + ',0.9)';
+    ctx.lineWidth = 3 + level * 5;
+    ctx.beginPath(); ctx.arc(c.x, c.y, R * level, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  // the center
+  ctx.fillStyle = 'rgb(' + ink + ')';
+  ctx.beginPath(); ctx.arc(c.x, c.y, hitR(), 0, Math.PI * 2); ctx.fill();
+}
+
+cv.addEventListener('pointermove', e => { px = e.clientX; py = e.clientY; });
+
+cv.addEventListener('pointerdown', e => {
+  px = e.clientX; py = e.clientY;
+  cv.setPointerCapture(e.pointerId);
+  const c = center();
+  if (Math.hypot(px - c.x, py - c.y) <= hitR()) {
+    holding = true;
+    level = 0;
+    say('');
+  } else {
+    say("that's not the center.");
+  }
+});
+
+function release() { if (holding) finish(); }
+cv.addEventListener('pointerup', release);
+cv.addEventListener('pointercancel', release);
+
+requestAnimationFrame(frame);
 </script>
 </body>
 </html>
