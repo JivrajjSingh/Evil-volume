@@ -13,7 +13,7 @@ Brightness. Instead of a simple slider, you have to set it by hitting the center
 ## screenshot
 
 <!-- drag a screenshot or a gif into this file on github.com to upload it -->
-![screenshot](screenshot.png)
+![screenshot](BuildBrightnessImage.png)
 
 ## live
 
